@@ -11,6 +11,18 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      (() => {
+        const runtimeKey = 'boardyume:runtime-version';
+        const runtimeVersion = '4';
+        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+        try { if (localStorage.getItem(runtimeKey) === runtimeVersion) return; } catch { /* Continue with safe refresh. */ }
+        navigator.serviceWorker.getRegistration('./')
+          .then((registration) => registration?.unregister())
+          .then((removed) => { if (removed) location.reload(); })
+          .catch(() => {});
+      })();
+    </script>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>

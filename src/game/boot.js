@@ -358,6 +358,7 @@ export async function bootGame(host) {
   loop.start(); window.addEventListener('beforeunload', () => saveGame(state), { once: true }); window.addEventListener('resize', () => renderer.applyCamera());
   loadingFill.style.width = '100%'; loadingMeter.setAttribute('aria-valuenow', '100'); loadingMessage.textContent = 'Khu vườn đã sẵn sàng.'; loadingCount.textContent = 'Hoàn tất';
   await new Promise((resolve) => requestAnimationFrame(() => { loading.hidden = true; tutorial.open(); resolve(); }));
+  try { localStorage.setItem('boardyume:runtime-version', '4'); } catch { /* Save availability is handled separately. */ }
   window.__BOARDYUME__ = { get state() { return state; }, manifest, renderer, save: () => saveGame(state), reset: () => { state = createInitialState(); return state; }, destroy() { loop.stop(); autosave.stop(); keyboard.destroy(); pointer.destroy(); renderer.destroy(); audioManager.destroy(); } };
   return window.__BOARDYUME__;
 }

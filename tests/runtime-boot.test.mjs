@@ -80,6 +80,7 @@ test('game DOM khởi động không lỗi, render HUD/world và lưu được t
     tutorial.querySelector('.tutorial-card__actions button').click();
     assert.equal(tutorial.hidden, true);
     assert.equal(dom.window.localStorage.getItem('boardyume:tutorial-complete:v2'), '1');
+    assert.equal(dom.window.localStorage.getItem('boardyume:runtime-version'), '4');
     assert.equal(game.save().ok, true);
     assert.ok(dom.window.localStorage.getItem('board-yume-save'));
   } finally {
