@@ -1,7 +1,7 @@
 export async function registerOfflineService({ onUpdate, onReady, onError } = {}) {
   if (!('serviceWorker' in navigator)) return null;
 
-  const base = import.meta.env?.BASE_URL || '/';
+  const base = import.meta.env?.BASE_URL || new URL('./', document.baseURI).pathname;
   const workerUrl = new URL('sw.js', document.baseURI).href;
   try {
     const registration = await navigator.serviceWorker.register(workerUrl, { scope: base });

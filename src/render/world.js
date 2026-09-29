@@ -25,7 +25,9 @@ function readNested(source, path) {
 }
 
 function runtimeBaseUrl() {
-  const configured = import.meta.env?.BASE_URL || './';
+  // Vite exposes BASE_URL in dev/build. GitHub Pages' legacy branch publisher
+  // serves the repository directly, where public/ remains part of the URL.
+  const configured = import.meta.env?.BASE_URL || './public/';
   return configured.endsWith('/') ? configured : `${configured}/`;
 }
 

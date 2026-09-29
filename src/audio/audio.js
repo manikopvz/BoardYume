@@ -3,7 +3,7 @@ const STORAGE_KEY = 'boardYume.audio.v1';
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, Number(value) || 0));
 
 const withBase = (path) => {
-  const base = import.meta.env?.BASE_URL || '/';
+  const base = import.meta.env?.BASE_URL || './public/';
   return `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
 };
 

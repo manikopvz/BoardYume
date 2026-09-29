@@ -1,42 +1,81 @@
-const CACHE_VERSION = 'board-yume-v2';
-const PRECACHE = [
-  '',
-  'index.html',
-  'manifest.webmanifest',
-  'assets/manifest.json',
-  'assets/audio/music/day-garden.ogg',
-  'assets/audio/music/night-garden.ogg',
-  'assets/audio/sfx/footstep.ogg',
-  'assets/audio/sfx/hoe.ogg',
-  'assets/audio/sfx/water.ogg',
-  'assets/audio/sfx/seed.ogg',
-  'assets/audio/sfx/harvest.ogg',
-  'assets/audio/sfx/chop.ogg',
-  'assets/audio/sfx/mine.ogg',
-  'assets/audio/sfx/pickup.ogg',
-  'assets/audio/sfx/build.ogg',
-  'assets/audio/sfx/complete.ogg',
-  'assets/audio/sfx/click.ogg',
-  'assets/audio/sfx/buy.ogg',
-  'assets/audio/sfx/sell.ogg',
-  'assets/audio/sfx/rain.ogg',
-  'assets/audio/sfx/birds.ogg',
-  'assets/audio/sfx/wind.ogg',
-  'assets/audio/sfx/insects.ogg',
-];
+const CACHE_VERSION = 'board-yume-v3';
+const CORE = ['', 'index.html', 'manifest.webmanifest'];
+const MANIFEST_FILE = ['manifest', 'json'].join('.');
 
 const scopedUrl = (path) => new URL(path, self.registration.scope).href;
+
+async function findManifest() {
+  for (const root of ['assets/', 'public/assets/']) {
+    try {
+      const response = await fetch(scopedUrl(`${root}${MANIFEST_FILE}`), { cache: 'no-cache' });
+      if (response.ok) return { root, manifest: await response.json() };
+    } catch {
+      // Try the direct-source layout next.
+    }
+  }
+  return null;
+}
+
+function manifestAssetPaths(root, manifest) {
+  return [...new Set(Object.values(manifest.assets || {}).map((asset) => asset.src).filter(Boolean))]
+    .map((path) => `${root}${path.replace(/^\/?assets\//, '')}`);
+}
+
+async function documentAssets() {
+  try {
+    const response = await fetch(scopedUrl('index.html'), { cache: 'no-cache' });
+    if (!response.ok) return [];
+    const markup = await response.text();
+    return [...markup.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
+      .map((match) => match[1])
+      .filter((path) => !/^(?:https?:|data:|#)/i.test(path));
+  } catch {
+    return [];
+  }
+}
+
+async function moduleGraph(initialPaths) {
+  const scope = self.registration.scope;
+  const queue = initialPaths.filter((path) => /\.js(?:$|[?#])/i.test(path));
+  const discovered = new Set();
+
+  while (queue.length) {
+    const path = queue.shift();
+    const absolute = new URL(path, scope);
+    if (absolute.origin !== self.location.origin || !absolute.href.startsWith(scope)) continue;
+    const relative = absolute.href.slice(scope.length);
+    if (discovered.has(relative)) continue;
+    discovered.add(relative);
+
+    try {
+      const response = await fetch(absolute.href, { cache: 'no-cache' });
+      if (!response.ok) continue;
+      const source = await response.text();
+      for (const match of source.matchAll(/(?:from\s*|import\s*(?:\(\s*)?)["']([^"']+\.js)["']/g)) {
+        const imported = new URL(match[1], absolute);
+        if (imported.origin === self.location.origin && imported.href.startsWith(scope)) {
+          queue.push(imported.href.slice(scope.length));
+        }
+      }
+    } catch {
+      // A missing optional module must not block the rest of the offline cache.
+    }
+  }
+  return [...discovered];
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_VERSION);
-    await cache.addAll(PRECACHE.map(scopedUrl));
-    const response = await fetch(scopedUrl('assets/manifest.json'));
-    if (!response.ok) return;
-    const manifest = await response.clone().json();
-    const paths = [...new Set(Object.values(manifest.assets || {}).map((asset) => asset.src).filter(Boolean))]
-      .map((path) => path.replace(/^\//, ''));
-    await Promise.allSettled(paths.map((path) => cache.add(scopedUrl(path))));
+    await Promise.allSettled(CORE.map((path) => cache.add(scopedUrl(path))));
+
+    const [located, linkedFiles] = await Promise.all([findManifest(), documentAssets()]);
+    const modules = await moduleGraph(linkedFiles);
+    const optional = [...linkedFiles, ...modules];
+    if (located) {
+      optional.push(`${located.root}${MANIFEST_FILE}`, ...manifestAssetPaths(located.root, located.manifest));
+    }
+    await Promise.allSettled([...new Set(optional)].map((path) => cache.add(scopedUrl(path))));
   })());
 });
 
