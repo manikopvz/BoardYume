@@ -1,0 +1,14 @@
+{
+  "name": "BoardYume — Vườn Mộng",
+  "short_name": "BoardYume",
+  "description": "Sandbox xây vườn 2.5D chơi được trên desktop và di động.",
+  "lang": "vi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#182d2b",
+  "theme_color": "#182d2b",
+  "categories": ["games", "entertainment"]
+}
+
