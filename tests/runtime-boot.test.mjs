@@ -33,6 +33,32 @@ test('game DOM khởi động không lỗi, render HUD/world và lưu được t
 
   let game;
   try {
+    const attempts = new Map();
+    class FakeImage {
+      set src(value) {
+        this.currentSrc = value;
+        const count = (attempts.get(value) || 0) + 1;
+        attempts.set(value, count);
+        queueMicrotask(() => {
+          if (value.endsWith('/retry.webp') && count === 1) this.onerror?.(new Event('error'));
+          else this.onload?.(new Event('load'));
+        });
+      }
+      get complete() { return false; }
+      get naturalWidth() { return 64; }
+      async decode() {}
+    }
+    const { preloadRasterAssets } = await import(`../src/render/world.js?preload=${Date.now()}`);
+    const preloadProgress = [];
+    const preload = await preloadRasterAssets({ assets: {
+      first: { src: '/assets/first.webp' },
+      firstAlias: { src: '/assets/first.webp' },
+      retry: { src: '/assets/retry.webp' },
+    } }, { ImageCtor: FakeImage, concurrency: 2, onProgress: (progress) => preloadProgress.push(progress) });
+    assert.deepEqual({ total: preload.total, loaded: preload.loaded, failures: preload.failures.length }, { total: 2, loaded: 2, failures: 0 });
+    assert.ok([...attempts.entries()].some(([url, count]) => url.endsWith('/retry.webp') && count === 2));
+    assert.ok(preloadProgress.length >= 3);
+
     const { bootGame } = await import(`../src/game/boot.js?test=${Date.now()}`);
     game = await bootGame(dom.window.document.querySelector('#app'));
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 35));
@@ -41,6 +67,19 @@ test('game DOM khởi động không lỗi, render HUD/world và lưu được t
     assert.ok(dom.window.document.querySelectorAll('.world-entity--tile').length > 30);
     assert.ok(dom.window.document.querySelector('.world-entity--player img[src]'));
     assert.ok(Object.keys(game.manifest.assets).length > 700);
+    assert.equal(dom.window.document.querySelector('.loading-screen').hidden, true);
+    const backdrop = dom.window.document.querySelector('.world-backdrop');
+    assert.ok(backdrop?.src.endsWith('/BoardYume/public/assets/background/world.webp'));
+    assert.doesNotMatch(dom.window.document.querySelector('.game-shell').getAttribute('style'), /src\/styles\/public\/assets/);
+
+    const tutorial = dom.window.document.querySelector('.tutorial-card');
+    assert.equal(tutorial.hidden, false);
+    assert.equal(tutorial.querySelector('.tutorial-card__progress').textContent, '1 / 5');
+    tutorial.querySelector('.is-primary').click();
+    assert.equal(tutorial.querySelector('.tutorial-card__progress').textContent, '2 / 5');
+    tutorial.querySelector('.tutorial-card__actions button').click();
+    assert.equal(tutorial.hidden, true);
+    assert.equal(dom.window.localStorage.getItem('boardyume:tutorial-complete:v2'), '1');
     assert.equal(game.save().ok, true);
     assert.ok(dom.window.localStorage.getItem('board-yume-save'));
   } finally {

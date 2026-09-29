@@ -27,11 +27,12 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .game-shell {
   position: relative; width: 100%; height: 100%; min-height: 320px; isolation: isolate; overflow: hidden;
   user-select: none; -webkit-user-select: none; touch-action: none; background-color: #6f9d68;
-  background-image: var(--asset-world-background); background-position: center; background-size: cover;
 }
 .game-shell.is-night { background-color: #263f49; }
-.game-shell.is-raining .game-viewport { filter: saturate(0.82) brightness(0.9); }
-.game-viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; contain: strict; }
+.world-backdrop { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; pointer-events: none; transition: filter 700ms ease; }
+.game-shell.is-night .world-backdrop { filter: brightness(0.46) saturate(0.72) hue-rotate(12deg); }
+.game-shell.is-raining .world-backdrop, .game-shell.is-raining .game-viewport { filter: saturate(0.82) brightness(0.9); }
+.game-viewport { position: absolute; inset: 0; z-index: 1; overflow: hidden; cursor: grab; touch-action: none; contain: strict; }
 .game-viewport.is-dragging { cursor: grabbing; }
 .game-viewport.is-tool-active { cursor: crosshair; }
 .camera-stage { position: absolute; left: 0; top: 0; width: 1px; height: 1px; transform-origin: 0 0; will-change: transform; }
@@ -153,19 +154,22 @@ button:disabled { cursor: not-allowed; opacity: 0.48; }
 .game-notification__close { border: 0; padding: 3px; background: transparent; color: #e9d7a9; cursor: pointer; font-size: 11px; }
 @keyframes notice-enter { from { opacity: 0; translate: -18px 0; } to { opacity: 1; translate: 0 0; } }
 .tutorial-backdrop { z-index: 49990; }
-.tutorial-card { position: absolute; z-index: 50000; left: 50%; bottom: max(106px, calc(env(safe-area-inset-bottom) + 96px)); width: min(480px, calc(100vw - 28px)); translate: -50% 0; padding: 20px; animation: tutorial-enter 220ms ease-out; }
+.tutorial-card { position: absolute; z-index: 50000; left: 50%; bottom: max(106px, calc(env(safe-area-inset-bottom) + 96px)); width: min(480px, calc(100vw - 28px)); translate: -50% 0; padding: 20px; pointer-events: auto; animation: tutorial-enter 220ms ease-out; }
 .tutorial-card__progress { color: #d5c79e; font-size: 12px; font-weight: 800; }
 .tutorial-card h2 { margin: 7px 0 9px; color: #f1d57b; font-family: Georgia, "Times New Roman", serif; font-size: 25px; }
 .tutorial-card p { margin: 0; color: #e5deca; line-height: 1.55; }
 .tutorial-card__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 17px; }
-.tutorial-focus { z-index: 50001 !important; outline: 4px solid var(--focus) !important; outline-offset: 4px; }
+.tutorial-focus { outline: 4px solid var(--focus) !important; outline-offset: 4px; filter: brightness(1.12); }
 @keyframes tutorial-enter { from { translate: -50% 16px; opacity: 0; } to { translate: -50% 0; opacity: 1; } }
 .pause-curtain, .confirm-dialog, .loading-screen { position: absolute; inset: 0; z-index: 60000; display: grid; place-items: center; background: rgba(12, 27, 24, 0.72); }
+.loading-screen { background: rgba(12, 27, 24, 0.58); }
 .pause-card, .confirm-card, .loading-card { width: min(430px, calc(100vw - 30px)); padding: 22px; text-align: center; }
 .pause-card h2, .confirm-card h2, .loading-card h1 { margin: 0 0 10px; color: #f2d67d; font-family: Georgia, "Times New Roman", serif; }
 .pause-card p, .confirm-card p, .loading-card p { color: var(--ink-muted); line-height: 1.55; }
 .confirm-card__actions, .pause-card__actions { display: flex; justify-content: center; gap: 9px; margin-top: 15px; }
 .loading-card img { display: block; width: 180px; height: 140px; margin: 0 auto 10px; object-fit: contain; }
+.loading-card__count { display: block; min-height: 18px; color: #f0d784; font-size: 12px; font-variant-numeric: tabular-nums; }
+.loading-card__retry { margin-top: 14px; }
 .loading-meter { height: 12px; margin-top: 14px; overflow: hidden; border: 2px solid #61462f; border-radius: 6px; background: #172a25; }
 .loading-meter__fill { width: 10%; height: 100%; background: #83ac5a; transition: width 260ms ease; }
 

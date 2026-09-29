@@ -1,4 +1,4 @@
-const TUTORIAL_KEY = 'boardyume:tutorial-complete';
+const TUTORIAL_KEY = 'boardyume:tutorial-complete:v2';
 
 const STEPS = Object.freeze([
   {
@@ -78,10 +78,13 @@ export function createTutorial(parent, { onComplete } = {}) {
   }
 
   function open(force = false) {
-    if (!force && localStorage.getItem(TUTORIAL_KEY) === '1') return false;
+    try {
+      if (!force && localStorage.getItem(TUTORIAL_KEY) === '1') return false;
+    } catch { /* Storage can be unavailable in private browsing. */ }
     stepIndex = 0;
     backdrop.hidden = false;
     card.hidden = false;
+    parent.classList.add('has-active-tutorial');
     render();
     requestAnimationFrame(() => next.focus({ preventScroll: true }));
     return true;
@@ -91,19 +94,28 @@ export function createTutorial(parent, { onComplete } = {}) {
     clearHighlight();
     backdrop.hidden = true;
     card.hidden = true;
+    parent.classList.remove('has-active-tutorial');
     if (completed) {
-      localStorage.setItem(TUTORIAL_KEY, '1');
+      try { localStorage.setItem(TUTORIAL_KEY, '1'); } catch { /* Non-fatal. */ }
       onComplete?.();
     }
   }
 
   skip.addEventListener('click', () => close(true));
-  next.addEventListener('click', () => {
+  function advance() {
     if (stepIndex >= STEPS.length - 1) close(true);
     else {
       stepIndex += 1;
       render();
+      requestAnimationFrame(() => next.focus({ preventScroll: true }));
     }
+  }
+  next.addEventListener('click', advance);
+  card.addEventListener('pointerdown', (event) => event.stopPropagation());
+  document.addEventListener('keydown', (event) => {
+    if (card.hidden) return;
+    if (event.key === 'Escape') { event.preventDefault(); close(true); }
+    if (event.key === 'Enter' && event.target?.tagName !== 'BUTTON') { event.preventDefault(); advance(); }
   });
 
   return { root: card, open, close, get active() { return !card.hidden; } };

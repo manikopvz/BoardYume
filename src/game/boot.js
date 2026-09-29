@@ -5,7 +5,7 @@ import { CROPS } from '../data/crops.js';
 import { BUILDINGS, getBuilding, getFootprint } from '../data/buildings.js';
 import { RECIPES } from '../data/recipes.js';
 import { QUESTS } from '../data/quests.js';
-import { createWorldRenderer, loadAssetManifest, resolveAsset } from '../render/world.js';
+import { createWorldRenderer, loadAssetManifest, preloadRasterAssets, resolveAsset } from '../render/world.js';
 import { createKeyboardInput } from '../input/keyboard.js';
 import { createPointerInput } from '../input/pointer.js';
 import { createHud, TOOLBAR_TOOLS } from '../ui/hud.js';
@@ -171,17 +171,79 @@ export async function bootGame(host) {
   if (!host) throw new Error('BoardYume cần một phần tử #app để khởi động.');
   const shell = document.createElement('main'); shell.className = 'game-shell';
   const loading = document.createElement('div'); loading.className = 'loading-screen';
-  loading.innerHTML = '<section class="loading-card ui-raster-panel"><h1>BoardYume</h1><p>Đang đánh thức khu vườn...</p><div class="loading-meter"><div class="loading-meter__fill"></div></div></section>';
+  loading.setAttribute('aria-live', 'polite');
+  loading.innerHTML = '<section class="loading-card ui-raster-panel"><img class="loading-card__art" alt="Ngôi nhà Vườn Mộng"><h1>BoardYume</h1><p class="loading-card__message">Đang chuẩn bị khu vườn...</p><strong class="loading-card__count">Đang đọc danh mục tài nguyên</strong><div class="loading-meter" role="progressbar" aria-label="Tiến độ tải tài nguyên" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="loading-meter__fill"></div></div><button type="button" class="loading-card__retry ui-raster-button" hidden>Thử tải lại</button></section>';
   const viewport = document.createElement('section'); viewport.className = 'game-viewport'; viewport.setAttribute('aria-label', 'Khu vườn BoardYume');
   shell.append(viewport, loading); host.replaceChildren(shell);
 
-  const manifest = await loadAssetManifest();
+  const loadingMessage = loading.querySelector('.loading-card__message');
+  const loadingCount = loading.querySelector('.loading-card__count');
+  const loadingMeter = loading.querySelector('.loading-meter');
+  const loadingFill = loading.querySelector('.loading-meter__fill');
+  const loadingArt = loading.querySelector('.loading-card__art');
+  const retryButton = loading.querySelector('.loading-card__retry');
+  const waitForRetry = (message) => new Promise((resolve) => {
+    loadingMessage.textContent = message;
+    loadingCount.textContent = 'Kiểm tra kết nối rồi thử lại. Game chưa được khởi chạy.';
+    retryButton.hidden = false;
+    retryButton.addEventListener('click', () => {
+      retryButton.hidden = true;
+      resolve();
+    }, { once: true });
+  });
+
+  let manifest = null;
+  let worldBackdrop = null;
+  while (!manifest) {
+    loadingMessage.textContent = 'Đang đọc danh mục tài nguyên...';
+    loadingCount.textContent = 'Vui lòng chờ';
+    loadingFill.style.width = '2%';
+    loadingMeter.setAttribute('aria-valuenow', '2');
+    const candidate = await loadAssetManifest();
+    if (!candidate?.assets || Object.keys(candidate.assets).length < 100) {
+      await waitForRetry('Không thể tải danh mục tài nguyên của khu vườn.');
+      continue;
+    }
+
+    shell.style.setProperty('--asset-ui-panel', `url("${resolveAsset(candidate, 'ui.description_panel')}")`);
+    shell.style.setProperty('--asset-ui-toolbar', `url("${resolveAsset(candidate, 'ui.toolbar')}")`);
+    shell.style.setProperty('--asset-ui-button', `url("${resolveAsset(candidate, 'ui.item_slot')}")`);
+    if (!worldBackdrop) {
+      worldBackdrop = document.createElement('img');
+      worldBackdrop.className = 'world-backdrop';
+      worldBackdrop.alt = '';
+      worldBackdrop.setAttribute('aria-hidden', 'true');
+      shell.insertBefore(worldBackdrop, viewport);
+    }
+    worldBackdrop.src = resolveAsset(candidate, 'background.world');
+    loadingArt.src = resolveAsset(candidate, 'building.house_1');
+    loadingMessage.textContent = 'Đang tải và giải mã tài nguyên...';
+
+    try {
+      const preloaded = await preloadRasterAssets(candidate, {
+        concurrency: 10,
+        onProgress(progress) {
+          const percentage = progress.total ? Math.round((progress.completed / progress.total) * 100) : 100;
+          loadingFill.style.width = `${percentage}%`;
+          loadingMeter.setAttribute('aria-valuenow', String(percentage));
+          loadingCount.textContent = progress.retrying
+            ? `Đang thử lại tài nguyên lỗi · ${progress.loaded}/${progress.total}`
+            : `${progress.loaded}/${progress.total} tài nguyên sẵn sàng`;
+        },
+      });
+      if (preloaded.failures.length) {
+        await waitForRetry(`Còn ${preloaded.failures.length} tài nguyên chưa tải được.`);
+        continue;
+      }
+      manifest = candidate;
+    } catch (error) {
+      console.error('[BoardYume] Preload thất bại.', error);
+      await waitForRetry('Quá trình tải tài nguyên bị gián đoạn.');
+    }
+  }
+
   const catalogs = { items: ITEMS, crops: CROPS, buildings: BUILDINGS, recipes: RECIPES, quests: QUESTS };
   let state = loadOrCreateGame().state || createInitialState(); syncProgressionUnlocks(state);
-  shell.style.setProperty('--asset-world-background', `url("${resolveAsset(manifest, 'background.world')}")`);
-  shell.style.setProperty('--asset-ui-panel', `url("${resolveAsset(manifest, 'ui.description_panel')}")`);
-  shell.style.setProperty('--asset-ui-toolbar', `url("${resolveAsset(manifest, 'ui.toolbar')}")`);
-  shell.style.setProperty('--asset-ui-button', `url("${resolveAsset(manifest, 'ui.item_slot')}")`);
 
   const renderer = createWorldRenderer(viewport, { manifest, catalogs });
   const notifications = createNotifications(shell);
@@ -292,8 +354,10 @@ export async function bootGame(host) {
       renderer.render(state, renderer.viewState, now); hud.update(state); panels.update(state);
     },
   });
+  renderer.render(state, renderer.viewState, performance.now()); hud.update(state); panels.update(state);
   loop.start(); window.addEventListener('beforeunload', () => saveGame(state), { once: true }); window.addEventListener('resize', () => renderer.applyCamera());
-  loading.querySelector('.loading-meter__fill').style.width = '100%'; window.setTimeout(() => { loading.hidden = true; tutorial.open(); }, 180);
+  loadingFill.style.width = '100%'; loadingMeter.setAttribute('aria-valuenow', '100'); loadingMessage.textContent = 'Khu vườn đã sẵn sàng.'; loadingCount.textContent = 'Hoàn tất';
+  await new Promise((resolve) => requestAnimationFrame(() => { loading.hidden = true; tutorial.open(); resolve(); }));
   window.__BOARDYUME__ = { get state() { return state; }, manifest, renderer, save: () => saveGame(state), reset: () => { state = createInitialState(); return state; }, destroy() { loop.stop(); autosave.stop(); keyboard.destroy(); pointer.destroy(); renderer.destroy(); audioManager.destroy(); } };
   return window.__BOARDYUME__;
 }

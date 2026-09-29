@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'board-yume-v3';
+const CACHE_VERSION = 'board-yume-v4';
 const CORE = ['', 'index.html', 'manifest.webmanifest'];
 const MANIFEST_FILE = ['manifest', 'json'].join('.');
 

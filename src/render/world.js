@@ -35,7 +35,10 @@ export function withBaseUrl(path) {
   if (!path || typeof path !== 'string') return '';
   if (/^(?:https?:|data:|blob:)/i.test(path)) return '';
   const clean = path.replace(/^\.?\//, '').replace(/^assets\//, '');
-  return `${runtimeBaseUrl()}assets/${clean}`;
+  const relative = `${runtimeBaseUrl()}assets/${clean}`;
+  return typeof document !== 'undefined' && document.baseURI
+    ? new URL(relative, document.baseURI).href
+    : relative;
 }
 
 function normalizeAssetPath(value) {
@@ -67,6 +70,92 @@ export async function loadAssetManifest(url = withBaseUrl('assets/manifest.json'
     console.warn('[BoardYume] Không thể tải asset manifest.', error);
     return {};
   }
+}
+
+export function listRasterAssetUrls(manifest) {
+  const entries = Object.values(manifest?.assets || {});
+  return [...new Set(entries
+    .map((entry) => normalizeAssetPath(entry))
+    .filter((url) => /\.(?:avif|jpe?g|png|webp)(?:[?#].*)?$/i.test(url)))];
+}
+
+function loadRaster(url, ImageCtor) {
+  return new Promise((resolve, reject) => {
+    const image = new ImageCtor();
+    let settled = false;
+    const finish = (error = null) => {
+      if (settled) return;
+      settled = true;
+      image.onload = null;
+      image.onerror = null;
+      if (error) reject(error);
+      else resolve(url);
+    };
+    image.decoding = 'async';
+    image.onload = async () => {
+      try { await image.decode?.(); } catch { /* onload already proves the raster is usable */ }
+      finish();
+    };
+    image.onerror = () => finish(new Error(`Không tải được raster asset: ${url}`));
+    image.src = url;
+    if (image.complete && image.naturalWidth > 0) queueMicrotask(() => finish());
+  });
+}
+
+export async function preloadRasterAssets(manifest, options = {}) {
+  const urls = listRasterAssetUrls(manifest);
+  const ImageCtor = options.ImageCtor ?? globalThis.Image;
+  const concurrency = Math.max(1, Math.min(16, Number(options.concurrency || 10)));
+  if (typeof ImageCtor !== 'function' || urls.length === 0) {
+    options.onProgress?.({ completed: urls.length, loaded: urls.length, failed: 0, total: urls.length, url: '' });
+    return { total: urls.length, loaded: urls.length, failures: [] };
+  }
+
+  let cursor = 0;
+  let completed = 0;
+  let loaded = 0;
+  const failures = [];
+  const worker = async () => {
+    while (cursor < urls.length) {
+      const url = urls[cursor];
+      cursor += 1;
+      try {
+        await loadRaster(url, ImageCtor);
+        loaded += 1;
+      } catch {
+        failures.push(url);
+      }
+      completed += 1;
+      options.onProgress?.({ completed, loaded, failed: failures.length, total: urls.length, url });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, urls.length) }, worker));
+
+  if (failures.length && options.retry !== false) {
+    let retryCursor = 0;
+    let retryLoaded = 0;
+    const finalFailures = [];
+    const retryWorker = async () => {
+      while (retryCursor < failures.length) {
+        const url = failures[retryCursor];
+        retryCursor += 1;
+        try {
+          await loadRaster(url, ImageCtor);
+          retryLoaded += 1;
+        } catch {
+          finalFailures.push(url);
+        }
+        options.onProgress?.({ completed: urls.length, loaded: loaded + retryLoaded, failed: finalFailures.length, total: urls.length, url, retrying: true });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, failures.length) }, retryWorker));
+    return {
+      total: urls.length,
+      loaded: loaded + retryLoaded,
+      failures: finalFailures,
+    };
+  }
+  return { total: urls.length, loaded, failures };
 }
 
 function valuesOf(source) {
